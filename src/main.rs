@@ -1,41 +1,53 @@
-use std::fs::OpenOptions;
-use std::io::{self, Write};
-use std::path::Path;
-use std::process::Command;
+use std::env;
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufRead, BufReader, Write};
 
 fn main() -> io::Result<()> {
-    // List of websites to block
-    let websites = vec![
-        "reddit.com",
-        "9gag.com"
-    ];
+    // let website_to_block = "9gag.com";
+    let args: Vec<String> = env::args().collect();
 
-    // Path to the hosts file
-    let hosts_path = "/private/etc/hosts";
-
-    // Backup the original hosts file
-    let backup_path = "/private/etc/hosts.backup";
-
-    Command::new("sudo")
-        .arg("cp")
-        .arg(hosts_path)
-        .arg(backup_path)
-        .status()
-        .expect("Failed to backup hosts file");
-
-    // Open the hosts file with write access
-    let mut hosts_file = OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open(Path::new(hosts_path))
-        .expect("Failed to open hosts file");
-
-    // Write the entries to the hosts file
-    for website in &websites {
-        writeln!(hosts_file, "127.0.0.1 {}", website)?;
-        writeln!(hosts_file, "127.0.0.1 www.{}", website)?;
+    if args.len() != 2 {
+        eprintln!("Usage: {} <website_to_block>", args[0]);
+        std::process::exit(1);
     }
 
-    println!("Websites blocked successfully.");
+    let website_to_block = &args[1];
+    let hosts_path = "/etc/hosts";
+
+    // Check if the website is already blocked
+    if !is_website_blocked(hosts_path, website_to_block)? {
+        // If the website is not blocked, add it to the hosts file
+        block_website(hosts_path, website_to_block)?;
+        println!("Website {} blocked successfully.", website_to_block);
+    } else {
+        println!("Website {} is already blocked.", website_to_block);
+    }
+
+    Ok(())
+}
+
+fn is_website_blocked(hosts_path: &str, website: &str) -> io::Result<bool> {
+    let file = File::open(hosts_path)?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.contains(website) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn block_website(hosts_path: &str, website: &str) -> io::Result<()> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(hosts_path)?;
+
+    writeln!(file, "127.0.0.1\t{}", website)?;
+    writeln!(file, "::1\t{}", website)?;
+
     Ok(())
 }
