@@ -6,21 +6,36 @@ fn main() -> io::Result<()> {
     // let website_to_block = "9gag.com";
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <website_to_block>", args[0]);
+    if args.len() != 3 {
+        eprintln!("Usage: {} <block|unblock> <website>", args[0]);
         std::process::exit(1);
     }
 
-    let website_to_block = &args[1];
+    let action = &args[1];
+    let website = &args[2];
     let hosts_path = "/etc/hosts";
 
-    // Check if the website is already blocked
-    if !is_website_blocked(hosts_path, website_to_block)? {
-        // If the website is not blocked, add it to the hosts file
-        block_website(hosts_path, website_to_block)?;
-        println!("Website {} blocked successfully.", website_to_block);
-    } else {
-        println!("Website {} is already blocked.", website_to_block);
+    match action.as_str() {
+        "block" => {
+            if !is_website_blocked(hosts_path, website)? {
+                block_website(hosts_path, website)?;
+                println!("Website {} blocked successfully.", website);
+            } else {
+                println!("Website {} is already blocked.", website);
+            }
+        }
+        "unblock" => {
+            if is_website_blocked(hosts_path, website)? {
+                unblock_website(hosts_path, website)?;
+                println!("Website {} unblocked successfully.", website);
+            } else {
+                println!("Website {} is not blocked.", website);
+            }
+        }
+        _ => {
+            eprintln!("Invalid action: {}. Use 'block' or 'unblock'.", action);
+            std::process::exit(1);
+        }
     }
 
     Ok(())
@@ -48,6 +63,34 @@ fn block_website(hosts_path: &str, website: &str) -> io::Result<()> {
 
     writeln!(file, "127.0.0.1\t{}", website)?;
     writeln!(file, "::1\t{}", website)?;
+
+    Ok(())
+}
+
+
+fn unblock_website(hosts_path: &str, website: &str) -> io::Result<()> {
+    let file = File::open(hosts_path)?;
+    let reader = BufReader::new(file);
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut is_blocked = false;
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.contains(website) {
+            is_blocked = true; // Found the website to unblock, skip writing it back
+            continue;
+        }
+        lines.push(line);
+    }
+
+    if is_blocked {
+        // Rewrite the hosts file without the blocked website
+        let mut file = OpenOptions::new().write(true).truncate(true).open(hosts_path)?;
+        for line in lines {
+            writeln!(file, "{}", line)?;
+        }
+    }
 
     Ok(())
 }
